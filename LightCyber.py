@@ -283,23 +283,28 @@ def visualize_results(corner_strengths, std_values, xy_threshold, input_image):
 
     plt.show()
 
+# camera params
 W = 640
 H = 268
+# alg params
+sigma = 1.5
+win_sz_std = 5
+max_corners_harris = 10
+low_thresh_harris = 300
+radius = 3
+threshold = 2
+use_cuda = True # use cuda if avaible
 
 file_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/OS_12062023024132_70m_4mW/Vid.raw'
 GainOffsetDirPath = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/'
 
-use_cuda = True
 if use_cuda and not torch.cuda.is_available():
     print("cuda is not available, using CPU")
-    use_cuda = False
-
-if use_cuda:
     device = torch.device("cuda")
 else:
     device = torch.device("cpu")
 
-# load the data
+# load the data using numpy
 dat_all_np = load_numpy_dat(file_path, W, H)
 
 # pre-process
@@ -315,19 +320,12 @@ dat_nuc_tr = AppGainOffset_torch(dat_all_tr, Gain, Offset, device)
 Frs_corrected = bad_pxl_corr_torch(dat_nuc_tr, neighborhoods, bad_pixels_flat)
 
 # run the alg.
-sigma = 1.5
-win_sz_std = 5
-max_corners_harris = 10
-low_thresh_harris = 300
-radius = 3
-threshold = 2
-# Call the function with your results
 corner_strengths, std_values, xy_threshold = LightCyberAlg(Frs_corrected, sigma = sigma, win_sz_std = win_sz_std, max_corners_harris = max_corners_harris, 
                         low_thresh_harris = low_thresh_harris, radius = radius, threshold = threshold, device = device, 
                         use_G1=True, without_loops_flg=True)
-# mean_corner_strengths and mean_std_values are your outputs.
-# y_threshold and x_threshold are the coordinates where mean_std_values > threshold after max pooling.
+# corner_strengths and std_values are your outputs.
+# xy_threshold is the coordinates where std_values > threshold after max pooling.
 print(time.time() - start_time)
-# Call the function with your results
+# %%
+# Show the results
 visualize_results(corner_strengths, std_values, xy_threshold, Frs_corrected[0])
-
