@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from scipy.stats import norm
 import numpy as np
 import matplotlib.pyplot as plt
 import time 
@@ -62,7 +61,8 @@ def LightCyberAlg(input_tensor, sigma, win_sz_std, max_corners_harris=10,
 
     # Gaussian filter preparation
     f_wid = round(3 * sigma)
-    G1_1D = torch.tensor(norm.pdf(torch.arange(-f_wid, f_wid + 1), loc=0, scale=sigma), dtype=torch.float32).to(device)
+    gaussian = torch.exp(-torch.arange(-f_wid, f_wid + 1)**2/2/sigma**2)/(2*torch.pi*sigma**2)**.5
+    G1_1D = torch.tensor(gaussian, dtype=torch.float32).to(device)
     G1 = G1_1D.reshape(1, 1, -1, 1)
     G1_transpose = G1_1D.reshape(1, 1, 1, -1)
     G2 = torch.mul(G1, G1_transpose)
@@ -151,15 +151,15 @@ def load_numpy_dat(file_path, W, H):
     dat_all = np.fromfile(fid, dtype=np.uint8)
     return dat_all
 
-def depack_raw_data_torch(dat_all, device='cuda', n_fr = None):
+def depack_raw_data_torch(dat_all, width, height, device='cuda', n_fr = None):
     packed = 1.5
     
     # Convert to PyTorch tensor
     dat_all_tr = torch.tensor(dat_all, dtype=torch.uint8, device=device)
-    fr_len = int(W * H * packed + 64)
+    fr_len = int(width * height * packed + 64)
     n_fr = len(dat_all_tr) // fr_len if n_fr is None else n_fr
     
-    qab1, qab2, qab3 = dat_all_tr[:fr_len*n_fr].view(n_fr,fr_len)[:,8:-56].view(n_fr,-1,3).permute(2,1,0).view(3,H,W//2,n_fr).permute(0,2,1,3).type(torch.int16).unbind(dim=0)
+    qab1, qab2, qab3 = dat_all_tr[:fr_len*n_fr].view(n_fr,fr_len)[:,8:-56].view(n_fr,-1,3).permute(2,1,0).view(3,height,width//2,n_fr).permute(0,2,1,3).type(torch.int16).unbind(dim=0)
     
     # Process qab2 and combine qab values
     qab2_least4 = qab2 % 16
@@ -167,18 +167,18 @@ def depack_raw_data_torch(dat_all, device='cuda', n_fr = None):
     odd_col_pix = qab1 + 256 * qab2_least4
     even_col_pix = qab3 * 16 + qab2_most4
     
-    comb = torch.zeros((2, W // 2, H, n_fr), dtype=torch.int16, device=device)
+    comb = torch.zeros((2, width // 2, height, n_fr), dtype=torch.int16, device=device)
     comb[0, :, :, :] = odd_col_pix
     comb[1, :, :, :] = even_col_pix
     
     # Reshape to match the final expected shape
-    comb = comb.permute(*reversed(range(len(comb.shape)))).reshape(*reversed((W , H, n_fr))).permute(*reversed(range(len((W , H, n_fr))))).permute(2, 1, 0)
+    comb = comb.permute(*reversed(range(len(comb.shape)))).reshape(*reversed((width , height, n_fr))).permute(*reversed(range(len((width , height, n_fr))))).permute(2, 1, 0)
     return comb
 
-def LoadGainOffset_torch(GainOffsetDirPath, W, H, device):
+def LoadGainOffset_torch(GainOffsetDirPath, width, height, device):
     # Read Gain and Offset using NumPy, then convert to PyTorch tensors
-    Offset = torch.from_numpy(np.fromfile(GainOffsetDirPath + 'Offset.raw', dtype=np.uint16).reshape(W, H).T.astype(np.int16)).to(device)
-    Gain = torch.from_numpy(np.fromfile(GainOffsetDirPath + 'Gain.raw', dtype=np.float64).reshape(W, H).T.astype(np.float32)).to(device)
+    Offset = torch.from_numpy(np.fromfile(GainOffsetDirPath + 'Offset.raw', dtype=np.uint16).reshape(width, height).T.astype(np.int16)).to(device)
+    Gain = torch.from_numpy(np.fromfile(GainOffsetDirPath + 'Gain.raw', dtype=np.float64).reshape(width, height).T.astype(np.float32)).to(device)
     
     return Gain, Offset
 
@@ -285,8 +285,8 @@ def visualize_results(corner_strengths, std_values, xy_threshold, input_image):
 
 def main():
     # camera params
-    W = 640
-    H = 268
+    width = 640
+    height = 268
     # alg params
     sigma = 1.5
     win_sz_std = 5
@@ -306,17 +306,17 @@ def main():
         device = torch.device("cpu")
 
     # load the data using numpy
-    dat_all_np = load_numpy_dat(file_path, W, H)
+    dat_all_np = load_numpy_dat(file_path, width, height)
 
     # pre-process
-    Gain, Offset = LoadGainOffset_torch(GainOffsetDirPath, W, H, device=device.type)
-    neighborhoods, bad_pixels_flat = find_bad_pxl_torch(Gain, W, H, device)
+    Gain, Offset = LoadGainOffset_torch(GainOffsetDirPath, width, height, device=device.type)
+    neighborhoods, bad_pixels_flat = find_bad_pxl_torch(Gain, width, height, device)
 
 
     start_time = time.time()
 
     # Organizing the data
-    dat_all_tr = depack_raw_data_torch(dat_all_np, device=device.type, n_fr = 500)
+    dat_all_tr = depack_raw_data_torch(dat_all_np, width=width, height=height, device=device.type, n_fr = 500)
     dat_nuc_tr = AppGainOffset_torch(dat_all_tr, Gain, Offset, device)
     Frs_corrected = bad_pxl_corr_torch(dat_nuc_tr, neighborhoods, bad_pixels_flat)
 
