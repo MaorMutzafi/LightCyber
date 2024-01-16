@@ -298,10 +298,10 @@ use_cuda = True # use cuda if avaible
 file_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/OS_12062023024132_70m_4mW/Vid.raw'
 GainOffsetDirPath = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/'
 
-if use_cuda and not torch.cuda.is_available():
-    print("cuda is not available, using CPU")
+if use_cuda and torch.cuda.is_available():
     device = torch.device("cuda")
 else:
+    print("cuda is not available, using CPU")
     device = torch.device("cpu")
 
 # load the data using numpy
