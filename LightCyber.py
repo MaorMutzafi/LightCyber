@@ -42,10 +42,16 @@ def LightCyberAlg(input_tensor, sigma, win_sz_std, max_corners_harris=10,
     Returns
     -------
     corner_strengths : torch.Tensor
-        Mean corner strengths over the entire batch, same size as input.
+        Corner strengths, same size as input. for non-corner it is zero
     
-    std_values : torch.Tensor
-        Mean standard deviation values over the entire batch, same size as input.
+    corners_y, corners_x: torch.Tensor
+        XY positions of the corners, shape [batch_size, max_corners_harris]
+    
+    corners_vals: torch.Tensor
+        Same data as corner_strengths, where for each frame b in the batch corners_vals[b,:] = corner_strengths[b, corners_y[b],corners_x[b]], shape [batch_size, max_corners_harris]
+
+    std_vals : torch.Tensor
+        Mean standard deviation values over the entire batch, organized such as corners_vals
     """
     # Ensure input is in float32 and subtract the mean frame
     input_tensor = input_tensor.type(torch.float32)
@@ -155,7 +161,8 @@ def depack_raw_data_torch(dat_all, width, height, device='cuda', n_fr = None):
     
     # Process qab2 and combine qab values
     qab2_least4 = qab2 % 16
-    qab2_most4 = qab2 // 16
+    #qab2_most4 = qab2 // 16
+    qab2_most4 = torch.div(qab2, 16, rounding_mode='trunc')
     odd_col_pix = qab1 + 256 * qab2_least4
     even_col_pix = qab3 * 16 + qab2_most4
     
@@ -279,6 +286,7 @@ def set_params():
         # camera params
     width = 640
     height = 268
+    n_fr = 500
     # alg params
     sigma = 1.5
     win_sz_std = 5
@@ -287,12 +295,13 @@ def set_params():
     radius = 3
     threshold = 2
     use_cuda = True # use cuda if avaible
+    
     # files path    
     file_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/OS_12062023024132_70m_4mW/Vid.raw'
     gain_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/Gain.raw'
     offset_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/Offset.raw'
 
-    return width, height, sigma, win_sz_std, max_corners_harris, low_thresh_harris, radius, threshold, use_cuda, file_path, gain_path, offset_path
+    return width, height, n_fr, sigma, win_sz_std, max_corners_harris, low_thresh_harris, radius, threshold, use_cuda, file_path, gain_path, offset_path
 
 def pre_process(file_path, width, height, use_cuda, gain_path,offset_path):
 
@@ -304,7 +313,7 @@ def pre_process(file_path, width, height, use_cuda, gain_path,offset_path):
 
     # load the data using numpy
     dat_all_np = load_numpy_dat(file_path, width, height)
-
+    
     # pre-process
     Gain, Offset = LoadGainOffset_torch(gain_path,offset_path, width, height, device=device.type)
     neighborhoods, bad_pixels_flat = find_bad_pxl_torch(Gain, width, height, device)
@@ -312,19 +321,20 @@ def pre_process(file_path, width, height, use_cuda, gain_path,offset_path):
 
 def main():
     # set the algo parameters
-    width, height, sigma, win_sz_std, max_corners_harris, low_thresh_harris, radius, threshold, use_cuda, file_path, gain_path, offset_path = set_params()
+    width, height, n_fr, sigma, win_sz_std, max_corners_harris, low_thresh_harris, radius, threshold, use_cuda, file_path, gain_path, offset_path = set_params()
     # pre-processing, loading gain/offset matrices and bad pixel loc
     Gain, Offset, dat_all_np, neighborhoods, bad_pixels_flat, device = pre_process(file_path, width, height, use_cuda, gain_path,offset_path)
 
     start_time = time.time()
 
     # Organizing the data
-    dat_all_tr = depack_raw_data_torch(dat_all_np, width=width, height=height, device=device.type, n_fr = 500)
+    dat_all_tr = depack_raw_data_torch(dat_all_np, width=width, height=height, device=device.type, n_fr = n_fr)
     dat_nuc_tr = AppGainOffset_torch(dat_all_tr, Gain, Offset, device)
     Frs_corrected = bad_pxl_corr_torch(dat_nuc_tr, neighborhoods, bad_pixels_flat)
 
     # run the alg. in Efcom format
-    corners_y, corners_x, corners_vals, std_vals, corner_strengths = LightCyberAlg(Frs_corrected, sigma = sigma, win_sz_std = win_sz_std, max_corners_harris = max_corners_harris, 
+    corners_y, corners_x, corners_vals, std_vals, corner_strengths = LightCyberAlg(
+        Frs_corrected, sigma = sigma, win_sz_std = win_sz_std, max_corners_harris = max_corners_harris, 
         low_thresh_harris = low_thresh_harris, radius = radius, threshold = threshold, device = device, 
         use_G1=True, without_loops_flg=True)
     # corner_strengths and std_values are your outputs.
