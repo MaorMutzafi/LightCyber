@@ -106,7 +106,7 @@ def LightCyberAlg(input_tensor, sigma, win_sz_std, max_corners_harris=10,
     window_x = (corners_x.view(batch_size, max_corners_harris, 1, 1, 1) + disp_x).clamp(min=0, max=width - 1)
     window_y = (corners_y.view(batch_size, max_corners_harris, 1, 1, 1) + disp_y).clamp(min=0, max=height - 1)
     
-    std_vals = input_tensor[torch.arange(batch_size).view(batch_size, 1, 1, 1, 1).expand_as(window_x), window_y, window_x].std(dim=[2, 3, 4])
+    std_vals = input_tensor[torch.arange(batch_size).view(batch_size, 1, 1, 1, 1).expand_as(window_x), window_y, window_x].std(dim=[2, 3, 4])*(corners_vals!=0).type(torch.float32)
 
     return corners_y, corners_x, corners_vals, std_vals, corner_strengths
 
@@ -286,7 +286,7 @@ def set_params():
         # camera params
     width = 640
     height = 268
-    n_fr = 500
+    n_fr = 300
     # alg params
     sigma = 1.5
     win_sz_std = 5
@@ -313,7 +313,7 @@ def pre_process(file_path, width, height, use_cuda, gain_path,offset_path):
 
     # load the data using numpy
     dat_all_np = load_numpy_dat(file_path, width, height)
-    
+
     # pre-process
     Gain, Offset = LoadGainOffset_torch(gain_path,offset_path, width, height, device=device.type)
     neighborhoods, bad_pixels_flat = find_bad_pxl_torch(Gain, width, height, device)
@@ -348,7 +348,6 @@ def main():
     corner_strengths, corner_std_vals, xy_threshold = alg_final_res(corner_strengths, std_vals, corners_x, corners_y, max_corners_harris, radius, threshold, sigma, device)
     # Show the results
     visualize_results(corner_strengths.mean(dim = 0), corner_std_vals.mean(dim = 0), xy_threshold, Frs_corrected[0])
-
 
 if __name__ == "__main__":
     main()
