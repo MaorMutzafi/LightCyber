@@ -1,10 +1,8 @@
 import traceback
 from torch import Tensor
-import torch.nn.functional as F
 import numpy as np
-import torch
 from typing import List
-from Algorithm.CoreFuncs import unbit_pack_data_torch, LoadGainOffset_torch, AppGainOffset_torch, find_bad_pxl_torch, bad_pxl_corr_torch, LightCyberAlg, firwin2
+from Algorithm.CoreFuncs import unbit_pack_data_torch, LoadGainOffset_torch, AppGainOffset_torch, find_bad_pxl_torch, bad_pxl_corr_torch, remove_batch_bg, LightCyberAlg
 from matplotlib import pyplot as plt
 from colorama import Fore
 
@@ -13,7 +11,7 @@ class AlgoRunner:
 
     def __init__(self, H: int, W: int, offset_path: str, gain_path: str, corner_window_harris: int = 3, nms_window_harris: int = 3,
                  cutoff_freq: float = 0.4, filter_order: int = 32, minimum_dist_between_points_to_be_considered_different: int = 25,
-                 max_corners: int = 8):
+                 max_corners: int = 6):
         print(Fore.CYAN + '--------------------------------')
         print('Preprocessing')
         self.Gain, self.Offset = LoadGainOffset_torch(offset_path, gain_path, W, H, device='cuda:0')                
@@ -21,7 +19,7 @@ class AlgoRunner:
         
         # Setting other members
         self.plt_flg = False
-        self.use_conv_or_mean = False
+        self.use_conv_or_mean = False#True
         self.cutoff_freq = cutoff_freq
         self.filter_order = filter_order
         self.minimum_dist_between_points_to_be_considered_different = minimum_dist_between_points_to_be_considered_different
@@ -60,6 +58,7 @@ class AlgoRunner:
         
         dat_nuc_tr = AppGainOffset_torch(data, self.Gain, self.Offset, device='cuda:0')
         corrected_frames = bad_pxl_corr_torch(dat_nuc_tr, self.bad_pixels_neighborhoods, self.bad_pixels_flat)
+        frames = remove_batch_bg(corrected_frames, self.cutoff_freq, self.filter_order, self.use_conv_or_mean)
         
         if self.plt_flg:
             plt.figure(123)
@@ -69,30 +68,13 @@ class AlgoRunner:
             plt.imshow(data[1].cpu().squeeze().numpy())
             plt.title('corrected frames #2')
             plt.figure(2345)
-            plt.plot(np.nansum(np.nansum(corrected_frames.cpu().squeeze().numpy(),axis=2),axis=1))
+            plt.plot(np.nansum(np.nansum(frames.cpu().squeeze().numpy(),axis=2),axis=1))
             plt.title('corrected frames average pixel level')
             plt.figure(867)
-            plt.imshow(corrected_frames.mean(dim=0).cpu().squeeze().numpy())
+            plt.imshow(frames.mean(dim=0).cpu().squeeze().numpy())
             plt.title('corrected frames mean')
-        
-        if self.use_conv_or_mean:
-            cutoff_freq = self.cutoff_freq  # Desired cutoff frequency (normalized between 0 and 1)
-            filter_order = self.filter_order  # Order of the FIR filter
-            # Generate the FIR filter coefficients using a windowing method
-            taps = np.reshape(firwin2(filter_order + 1, [0, cutoff_freq, cutoff_freq, 1], [1, 1, 0, 0]), (-1, 1))
-    
-            torch_taps = torch.from_numpy(taps).cuda().unsqueeze(0).unsqueeze(0)
-            torch_tapsT = torch_taps.view(1,1,1,filter_order + 1)
-            
-            filtered_frames = F.conv2d(corrected_frames.type(torch.double).unsqueeze(1), torch_taps, padding='valid') #Maor 18/02/24
-            filtered_frames = F.conv2d(filtered_frames, torch_tapsT, padding='valid') #Maor 18/02/24
-            corrected_frames = (corrected_frames[:,filter_order//2:-filter_order//2,filter_order//2:-filter_order//2] - filtered_frames.squeeze()).type(torch.float32)
-        else:
-            corrected_frames = corrected_frames - torch.mean(corrected_frames,dim=0)
-        # plt.figure()
-        # plt.imshow(corrected_frames[0].cpu().squeeze().numpy())
-        
-        all_corners = LightCyberAlg(corrected_frames, 
+                
+        all_corners = LightCyberAlg(frames, 
                                 sigma_harris = self.sigma_harris, nms_window_harris  = self.nms_window_harris, 
                                 max_corners = self.max_corners, corners_thresh = self.corners_thresh, 
                                 minimum_dist_between_points_to_be_considered_different = self.minimum_dist_between_points_to_be_considered_different, 

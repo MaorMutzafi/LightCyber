@@ -12,9 +12,9 @@ def main():
     # offset_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/Offset.raw'
     # gain_path = 'C:/Users/User/Documents/Mafaat_new_Topics/LightCyber/Exp/Kfir_11June2023/Data/GainOffset/Gain.raw'
     
-    fp = "C:/Users/User/Dropbox/OnGoing/LightCyberApp/Data/frames_low_power_1_7_focus.raw"
-    offset_path = "C:/Users/User/Dropbox/OnGoing/LightCyberApp/Data/Offset.txt"
-    gain_path = "C:/Users/User/Dropbox/OnGoing/LightCyberApp/Data/Gain.txt"
+    fp =          "C:/Users/User/Dropbox/WorkResearch/MafaatProjects/Projects/LightCyber/LightCyberApp/Data/Vid_tst_25Feb24.raw"
+    offset_path = "C:/Users/User/Dropbox/WorkResearch/MafaatProjects/Projects/LightCyber/LightCyberApp/Data/Offset.txt"
+    gain_path =   "C:/Users/User/Dropbox/WorkResearch/MafaatProjects/Projects/LightCyber/LightCyberApp/Data/Gain.txt"
     # fp = "/home/rakia/GargoyleEfcom/data/Vid.raw"
     # offset_path = "/home/rakia/GargoyleEfcom/data/Offset.txt"
     # gain_path = "/home/rakia/GargoyleEfcom/data/Gain.txt"

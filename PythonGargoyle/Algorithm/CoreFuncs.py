@@ -129,11 +129,31 @@ def bad_pxl_corr_torch(data_raw_torch, bad_pixels_neighborhoods, bad_pixels_flat
 
     # Replace bad pixel values with the computed means in the original data
     data_raw_flat.scatter_(1, bad_pixels_flat_expanded, neighborhood_means)
-
+    
     # Reshape data_raw_torch back to original shape
     data_raw_torch = data_raw_flat.view(batch_size, H, W)
 
     return data_raw_torch
+
+def remove_batch_bg(frames, cutoff_freq, filter_order, use_conv_or_mean):
+        # cutoff_freq  # Desired cutoff frequency (normalized between 0 and 1)
+        # filter_order  # Order of the FIR filter
+    
+    if use_conv_or_mean:
+        # Generate the FIR filter coefficients using a windowing method
+        taps = np.reshape(firwin2(filter_order + 1, [0, cutoff_freq, cutoff_freq, 1], [1, 1, 0, 0]), (-1, 1))
+
+        torch_taps = torch.from_numpy(taps).cuda().unsqueeze(0).unsqueeze(0)
+        torch_tapsT = torch_taps.view(1,1,1,filter_order + 1)
+        
+        filtered_frames = F.conv2d(frames.type(torch.double).unsqueeze(1), torch_taps, padding='valid') #Maor 18/02/24
+        filtered_frames = F.conv2d(filtered_frames, torch_tapsT, padding='valid') #Maor 18/02/24
+        corrected_frames = (frames[:,filter_order//2:-filter_order//2,filter_order//2:-filter_order//2] - filtered_frames.squeeze()).type(torch.float32)
+    else:
+        corrected_frames = frames - torch.mean(frames,dim=0)
+        
+    return corrected_frames
+
 
 def _get_fs(fs, nyq):
     """
@@ -346,7 +366,7 @@ def LightCyberAlg(input_tensor, sigma_harris = 1.5, nms_window_harris = 5, max_c
     
     # Parameters for batch and image dimensions
     batch_size, height, width = input_tensor.shape
-
+    
     # Find top max_corners corners in each frame
     corners_vals, idx = torch.topk(corners.view(corners.size(0), -1), k=max_corners)
     corners_y, corners_x = idx.div(corners.size(2), rounding_mode='floor'), idx % corners.size(2)
@@ -402,7 +422,7 @@ def LightCyberAlg(input_tensor, sigma_harris = 1.5, nms_window_harris = 5, max_c
     xy_loc_val_np = xy_loc_val_np[xy_loc_val_np[:, 2].argsort()[::-1]] # sort the corners strengths
     
     # Create a list with "batch size" entries, each containing frames_xy_loc_val_np
-    result_list_xy_loc_val = [xy_loc_val_np.copy() for _ in range(input_tensor.shape[0])]
+    result_list_xy_loc_val = [xy_loc_val_np.tolist().copy() for _ in range(input_tensor.shape[0])]
     
     if plt_flg:
         plt.figure(23)
